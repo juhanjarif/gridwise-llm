@@ -51,7 +51,7 @@ def solve(hours: list[HourEntry], battery: BatteryConfig, constraints: Effective
 
     prob += batt[n - 1] == init_e
 
-    status = prob.solve(pulp.COIN_CMD(msg=False))
+    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
     if pulp.LpStatus[status] != "Optimal":
         raise RuntimeError(f"Optimizer did not find an optimal solution: {pulp.LpStatus[status]}")
 
@@ -63,12 +63,11 @@ def solve(hours: list[HourEntry], battery: BatteryConfig, constraints: Effective
         d = _clean(dis[h].value())
         b = _clean(batt[h].value())
 
-        if c > EPS and d > EPS:
-            raise RuntimeError(f"Hour {h} has simultaneous charge and discharge")
-        if c > EPS:
-            action, kwh = "charge", c
-        elif d > EPS:
-            action, kwh = "discharge", d
+        net = c - d
+        if net > EPS:
+            action, kwh = "charge", _clean(net)
+        elif net < -EPS:
+            action, kwh = "discharge", _clean(-net)
         else:
             action, kwh = "idle", 0.0
 

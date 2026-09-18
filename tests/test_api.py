@@ -8,7 +8,7 @@ def test_health():
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
 
-def test_optimize_stub_returns_501():
+def test_optimize_returns_valid_plan():
     body = {
         "scenario_id": "T1",
         "operator_notes": ["nothing relevant"],
@@ -24,7 +24,11 @@ def test_optimize_stub_returns_501():
         },
     }
     r = client.post("/optimize-energy", json=body)
-    assert r.status_code == 501
+    assert r.status_code == 200
+    data = r.json()
+    assert data["scenario_id"] == "T1"
+    assert len(data["directive_interpretation"]) == 1
+    assert len(data["hourly_plan"]) == 24
 
 def test_optimize_rejects_malformed_body():
     r = client.post("/optimize-energy", json={"scenario_id": "T1"})
