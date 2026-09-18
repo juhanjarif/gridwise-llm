@@ -9,5 +9,4 @@ def health():
 
 @app.post("/optimize-energy", response_model=OptimizeEnergyResponse)
 def optimize_energy(req: OptimizeEnergyRequest):
-    # STUB — replace with real pipeline
     raise HTTPException(status_code=501, detail="Not implemented yet")
