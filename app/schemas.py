@@ -1,17 +1,9 @@
-"""Pydantic models for the /optimize-energy request/response contract.
-
-Source of truth: Preliminary Problem Statement, Sections 04, 07, 10.
-"""
-
 from __future__ import annotations
-
 from typing import Literal, Optional, Union
-
 from pydantic import BaseModel, Field, model_validator
 
-
 def _validate_hours(hours: list[int]) -> list[int]:
-    if not hours:
+    if hours is None or len(hours) == 0:
         raise ValueError("hours must be a non-empty list")
     if any(h < 0 or h > 23 for h in hours):
         raise ValueError("hours must be integers from 0 through 23")
@@ -20,19 +12,11 @@ def _validate_hours(hours: list[int]) -> list[int]:
     if hours != sorted(hours):
         raise ValueError("hours must be in ascending order")
     return hours
-
-
-# ---------------------------------------------------------------------------
-# Request schema (Problem Statement §07)
-# ---------------------------------------------------------------------------
-
 class HourEntry(BaseModel):
     hour: int = Field(ge=0, le=23)
     demand_kwh: float = Field(ge=0)
     solar_kwh: float = Field(ge=0)
     tariff_bdt_per_kwh: float = Field(ge=0)
-
-
 class BatteryConfig(BaseModel):
     capacity_kwh: float = Field(gt=0)
     initial_energy_kwh: float = Field(ge=0)
@@ -48,7 +32,6 @@ class BatteryConfig(BaseModel):
             raise ValueError("initial_energy_kwh must be between minimum_energy_kwh and capacity_kwh")
         return self
 
-
 class OptimizeEnergyRequest(BaseModel):
     scenario_id: str = Field(min_length=1)
     operator_notes: list[str] = Field(min_length=1, max_length=3)
@@ -63,11 +46,6 @@ class OptimizeEnergyRequest(BaseModel):
         if sorted(hour_values) != list(range(24)):
             raise ValueError("hours must contain exactly one entry for each hour 0 through 23")
         return self
-
-
-# ---------------------------------------------------------------------------
-# Directive types & structured_adjustment shapes (Problem Statement §04.1)
-# ---------------------------------------------------------------------------
 
 DirectiveType = Literal[
     "solar_reduction",
@@ -89,15 +67,8 @@ ALLOWED_DIRECTIVE_TYPES = frozenset(
     }
 )
 
-
 class _AdjustmentBase(BaseModel):
-    # extra="forbid" matters here: several adjustment shapes share the same
-    # required fields (e.g. no_charge_window vs no_discharge_window both have
-    # only "hours"), so an unexpected extra field is often the only signal
-    # that the LLM emitted the wrong shape for the chosen directive_type.
     model_config = {"extra": "forbid"}
-
-
 class SolarReductionAdjustment(_AdjustmentBase):
     hours: list[int]
     factor: float = Field(ge=0, le=1)
@@ -106,8 +77,6 @@ class SolarReductionAdjustment(_AdjustmentBase):
     def _check(self) -> "SolarReductionAdjustment":
         _validate_hours(self.hours)
         return self
-
-
 class MinimumBatteryReserveAdjustment(_AdjustmentBase):
     hours: list[int]
     minimum_energy_kwh: float = Field(ge=0)
@@ -116,8 +85,6 @@ class MinimumBatteryReserveAdjustment(_AdjustmentBase):
     def _check(self) -> "MinimumBatteryReserveAdjustment":
         _validate_hours(self.hours)
         return self
-
-
 class NoChargeWindowAdjustment(_AdjustmentBase):
     hours: list[int]
 
@@ -125,8 +92,6 @@ class NoChargeWindowAdjustment(_AdjustmentBase):
     def _check(self) -> "NoChargeWindowAdjustment":
         _validate_hours(self.hours)
         return self
-
-
 class NoDischargeWindowAdjustment(_AdjustmentBase):
     hours: list[int]
 
@@ -145,11 +110,6 @@ class MaxGridWindowAdjustment(_AdjustmentBase):
         _validate_hours(self.hours)
         return self
 
-
-# Note: no_charge_window and no_discharge_window share the identical {"hours": [...]}
-# shape, so a plain Union would resolve ambiguously. Instead, structured_adjustment is
-# kept as a raw dict on the wire and validated against the model selected by
-# directive_type below, rather than by Pydantic's own union-matching.
 StructuredAdjustment = Union[
     SolarReductionAdjustment,
     MinimumBatteryReserveAdjustment,
@@ -158,7 +118,6 @@ StructuredAdjustment = Union[
     MaxGridWindowAdjustment,
 ]
 
-# Maps directive_type -> the model class that validates its structured_adjustment.
 ADJUSTMENT_MODEL_BY_TYPE: dict[str, type[BaseModel]] = {
     "solar_reduction": SolarReductionAdjustment,
     "minimum_battery_reserve": MinimumBatteryReserveAdjustment,
@@ -166,8 +125,6 @@ ADJUSTMENT_MODEL_BY_TYPE: dict[str, type[BaseModel]] = {
     "no_discharge_window": NoDischargeWindowAdjustment,
     "max_grid_window": MaxGridWindowAdjustment,
 }
-
-
 class DirectiveInterpretation(BaseModel):
     note_index: int = Field(ge=0)
     applies: bool
@@ -186,26 +143,17 @@ class DirectiveInterpretation(BaseModel):
             if self.structured_adjustment is None:
                 raise ValueError(f"{self.directive_type} requires a structured_adjustment")
             expected_model = ADJUSTMENT_MODEL_BY_TYPE[self.directive_type]
-            # Validate shape by construction, then normalize back to a plain dict
-            # (rejects extra/missing fields and out-of-range values via the sub-model).
             validated = expected_model.model_validate(self.structured_adjustment)
             self.structured_adjustment = validated.model_dump()
         return self
 
     def adjustment_as_model(self) -> Optional[BaseModel]:
-        """Return structured_adjustment parsed into its typed model, or None for no_op."""
         if self.directive_type == "no_op":
             return None
         expected_model = ADJUSTMENT_MODEL_BY_TYPE[self.directive_type]
         return expected_model.model_validate(self.structured_adjustment)
 
-
-# ---------------------------------------------------------------------------
-# Response schema (Problem Statement §10)
-# ---------------------------------------------------------------------------
-
 BatteryAction = Literal["charge", "discharge", "idle"]
-
 
 class HourlyPlanEntry(BaseModel):
     hour: int = Field(ge=0, le=23)
@@ -220,8 +168,6 @@ class HourlyPlanEntry(BaseModel):
         if self.battery_action == "idle" and self.battery_kwh != 0:
             raise ValueError("battery_kwh must be 0 when battery_action is idle")
         return self
-
-
 class OptimizeEnergyResponse(BaseModel):
     scenario_id: str
     directive_interpretation: list[DirectiveInterpretation]
@@ -237,7 +183,6 @@ class OptimizeEnergyResponse(BaseModel):
         if sorted(hour_values) != list(range(24)):
             raise ValueError("hourly_plan must contain exactly one entry for each hour 0 through 23")
         return self
-
 
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
