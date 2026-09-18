@@ -1,11 +1,6 @@
-Smart-campus energy optimization service. Given a 24-hour energy scenario
-plus 1-3 natural-language operator notes, it returns a machine-checkable
-interpretation of those notes and a valid, cost-minimized 24-hour battery
+Smart-campus energy optimization service. Given a 24-hour energy scenario plus 1-3 natural-language operator notes, it returns a machine-checkable interpretation of those notes and a valid, cost-minimized 24-hour battery grid schedule.
 
-- grid schedule.
-
-Full behavior is defined by the organizer's Problem Statement; this README
-only covers running and testing this implementation.
+This README covers running and testing this implementation.
 
 ## Setup (clean environment quickstart)
 
