@@ -5,6 +5,9 @@ import os
 import httpx
 
 from app import config
+from app.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 20.0
 
@@ -17,7 +20,6 @@ class ProviderError(Exception):
 
 
 class AllProvidersFailedError(Exception):
-    """Raised when every configured provider failed. Caller must fail safe."""
 
     def __init__(self, attempts: list[tuple[str, str]]):
         self.attempts = attempts
@@ -81,8 +83,6 @@ _CALLERS = {
 
 
 def _provider_order() -> list[str]:
-    """Primary provider first (LLM_PROVIDER env, loaded via app.config), then
-    any other provider that has an API key configured, as a fallback."""
     primary = (config.LLM_PROVIDER or "").strip().lower()
     order = [primary] if primary in _CALLERS else []
     order += [name for name in _CALLERS if name not in order]
@@ -100,10 +100,14 @@ async def complete_with_provider(
             attempts.append((name, f"no {key_env} configured"))
             continue
         try:
-            return name, await caller(messages, api_key, timeout)
+            result = await caller(messages, api_key, timeout)
+            logger.info("LLM request answered by provider=%s", name)
+            return name, result
         except ProviderError as exc:
+            logger.warning("Provider %s failed, trying next: %s", name, exc)
             attempts.append((name, str(exc)))
             continue
+    logger.error("All LLM providers failed: %s", attempts)
     raise AllProvidersFailedError(attempts)
 
 
