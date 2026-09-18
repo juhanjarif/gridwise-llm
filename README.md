@@ -1,3 +1,5 @@
+# Gridwise-LLM
+
 Smart-campus energy optimization service. Given a 24-hour energy scenario plus 1-3 natural-language operator notes, it returns a machine-checkable interpretation of those notes and a valid, cost-minimized 24-hour battery grid schedule.
 
 This README covers running and testing this implementation.
