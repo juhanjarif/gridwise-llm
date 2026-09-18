@@ -7,6 +7,35 @@ from app.optimizer import build_constraints, solve, replay_and_verify
 
 app = FastAPI(title="GridWise LLM Assistant")
 
+
+def _build_plan_summary(directives: list[DirectiveInterpretation]) -> str:
+    applied = [
+        d for d in directives if d.directive_type != "no_op" and d.applies
+    ]
+    if not applied:
+        return "No applicable operator directives. Minimized 24-hour grid electricity cost."
+    parts = []
+    for d in applied:
+        adj = d.structured_adjustment or {}
+        hours = adj.get("hours", [])
+        hour_str = f"h{','.join(str(h) for h in hours)}" if hours else ""
+        if d.directive_type == "solar_reduction":
+            factor = adj.get("factor", "?")
+            parts.append(f"solar_reduction(factor={factor}, {hour_str})")
+        elif d.directive_type == "minimum_battery_reserve":
+            kwh = adj.get("minimum_energy_kwh", "?")
+            parts.append(f"minimum_battery_reserve({kwh}kWh, {hour_str})")
+        elif d.directive_type == "no_charge_window":
+            parts.append(f"no_charge_window({hour_str})")
+        elif d.directive_type == "no_discharge_window":
+            parts.append(f"no_discharge_window({hour_str})")
+        elif d.directive_type == "max_grid_window":
+            cap = adj.get("max_grid_kwh", "?")
+            parts.append(f"max_grid_window({cap}kWh, {hour_str})")
+    directive_str = "; ".join(parts)
+    return f"Applied: {directive_str}. Minimized 24-hour grid electricity cost."
+
+
 @app.get("/health", response_model=HealthResponse)
 def health():
     return HealthResponse(status="ok")
@@ -38,11 +67,6 @@ async def optimize_energy(req: OptimizeEnergyRequest):
     try:
         plan = solve(req.hours, req.battery, constraints)
     except (RuntimeError, pulp.PulpSolverError) as exc:
-        # PulpSolverError doesn't inherit from RuntimeError (it's a plain
-        # PulpError/Exception subclass), so an infeasible LP -- e.g. a
-        # minimum_battery_reserve directive above capacity -- would
-        # otherwise slip past this handler as an unhandled 500 with a raw
-        # stack trace instead of a controlled 422.
         raise HTTPException(status_code=422, detail=str(exc))
 
     try:
@@ -57,5 +81,5 @@ async def optimize_energy(req: OptimizeEnergyRequest):
         total_grid_kwh=totals["total_grid_kwh"],
         total_cost_bdt=totals["total_cost_bdt"],
         peak_grid_kwh=totals["peak_grid_kwh"],
-        plan_summary="Applied operator directives and minimized grid cost.",
+        plan_summary=_build_plan_summary(directives),
     )
