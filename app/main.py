@@ -46,7 +46,7 @@ async def optimize_energy(req: OptimizeEnergyRequest):
         raw_directives = await interpret_notes(
             req.operator_notes,
             req.battery.capacity_kwh,
-            timeout=20.0,
+            timeout=15.0,
         )
     except (InterpretationUnavailableError, MalformedLLMOutputError) as exc:
         directives = [
@@ -62,17 +62,20 @@ async def optimize_energy(req: OptimizeEnergyRequest):
     else:
         directives = validate_interpretations(raw_directives, len(req.operator_notes))
 
-    constraints = build_constraints(req.hours, req.battery, directives)
-
     try:
+        constraints = build_constraints(req.hours, req.battery, directives)
         plan = solve(req.hours, req.battery, constraints)
     except (RuntimeError, pulp.PulpSolverError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal constraint-building or optimization error")
 
     try:
         plan, totals = replay_and_verify(req.hours, req.battery, plan, constraints)
-    except ValueError as exc:
-        raise HTTPException(status_code=500, detail=f"Internal plan invalid: {exc}")
+    except ValueError:
+        raise HTTPException(status_code=500, detail="Internal plan validation failed")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal plan validation failed")
 
     return OptimizeEnergyResponse(
         scenario_id=req.scenario_id,
