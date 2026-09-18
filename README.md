@@ -63,3 +63,31 @@ curl -X POST http://localhost:8000/optimize-energy \
   -H "Content-Type: application/json" \
   -d @data/example_request.json
 ```
+
+## Docker fallback image
+
+To use it locally:
+
+```bash
+docker build -t gridwise-llm:test .
+
+docker run -d --name gridwise -p 8000:8000 \
+  -e LLM_PROVIDER=gemini \
+  -e GEMINI_API_KEY=<your-key> \
+  -e GROQ_API_KEY=<your-key> \
+  gridwise-llm:test
+
+curl http://localhost:8000/health
+```
+
+**Pullable registry image:** `tamajose/gridwise-llm:v1`
+
+```bash
+docker pull tamajose/gridwise-llm:v1
+
+docker run -d -p 8000:8000 \
+  -e LLM_PROVIDER=gemini \
+  -e GEMINI_API_KEY=<your-key> \
+  -e GROQ_API_KEY=<your-key> \
+  tamajose/gridwise-llm:v1
+```
