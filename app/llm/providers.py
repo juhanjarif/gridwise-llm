@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 
 import httpx
@@ -10,6 +11,8 @@ from app.utils.logging import get_logger
 logger = get_logger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 20.0
+MAX_RATE_LIMIT_RETRIES = 2
+MAX_RETRY_DELAY_SECONDS = 5.0
 
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
@@ -19,12 +22,29 @@ class ProviderError(Exception):
     """Raised when a single provider call fails (network, HTTP, or shape)."""
 
 
+class RateLimitError(ProviderError):
+
+    def __init__(self, message: str, retry_after: float):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class AllProvidersFailedError(Exception):
 
     def __init__(self, attempts: list[tuple[str, str]]):
         self.attempts = attempts
         detail = "; ".join(f"{name}: {err}" for name, err in attempts)
         super().__init__(f"all LLM providers failed -> {detail}")
+
+
+def _parse_retry_after(resp: httpx.Response) -> float:
+    header = resp.headers.get("retry-after")
+    if header:
+        try:
+            return min(float(header), MAX_RETRY_DELAY_SECONDS)
+        except ValueError:
+            pass
+    return 1.0
 
 
 async def _call_groq(messages: list[dict], api_key: str, timeout: float) -> str:
@@ -40,6 +60,10 @@ async def _call_groq(messages: list[dict], api_key: str, timeout: float) -> str:
             resp = await client.post(url, headers=headers, json=body)
         except httpx.RequestError as exc:
             raise ProviderError(f"network error calling Groq: {exc}") from exc
+    if resp.status_code == 429:
+        raise RateLimitError(
+            f"Groq rate limited: {resp.text[:200]}", retry_after=_parse_retry_after(resp)
+        )
     if resp.status_code != 200:
         raise ProviderError(f"Groq returned HTTP {resp.status_code}: {resp.text[:200]}")
     data = resp.json()
@@ -67,6 +91,10 @@ async def _call_gemini(messages: list[dict], api_key: str, timeout: float) -> st
             resp = await client.post(url, json=body)
         except httpx.RequestError as exc:
             raise ProviderError(f"network error calling Gemini: {exc}") from exc
+    if resp.status_code == 429:
+        raise RateLimitError(
+            f"Gemini rate limited: {resp.text[:200]}", retry_after=_parse_retry_after(resp)
+        )
     if resp.status_code != 200:
         raise ProviderError(f"Gemini returned HTTP {resp.status_code}: {resp.text[:200]}")
     data = resp.json()
@@ -89,6 +117,25 @@ def _provider_order() -> list[str]:
     return order
 
 
+async def _call_with_rate_limit_retry(
+    caller, messages: list[dict], api_key: str, timeout: float, provider_name: str
+) -> str:
+    last_error: RateLimitError | None = None
+    for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+        try:
+            return await caller(messages, api_key, timeout)
+        except RateLimitError as exc:
+            last_error = exc
+            if attempt == MAX_RATE_LIMIT_RETRIES:
+                break
+            logger.warning(
+                "Provider %s rate limited (attempt %d/%d), retrying in %.1fs",
+                provider_name, attempt + 1, MAX_RATE_LIMIT_RETRIES + 1, exc.retry_after,
+            )
+            await asyncio.sleep(exc.retry_after)
+    raise last_error
+
+
 async def complete_with_provider(
     messages: list[dict], timeout: float = DEFAULT_TIMEOUT_SECONDS
 ) -> tuple[str, str]:
@@ -100,7 +147,7 @@ async def complete_with_provider(
             attempts.append((name, f"no {key_env} configured"))
             continue
         try:
-            result = await caller(messages, api_key, timeout)
+            result = await _call_with_rate_limit_retry(caller, messages, api_key, timeout, name)
             logger.info("LLM request answered by provider=%s", name)
             return name, result
         except ProviderError as exc:
