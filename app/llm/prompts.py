@@ -13,8 +13,11 @@ Supported directive types (use ONLY these six values for directive_type):
 1. solar_reduction
    Meaning: usable solar power is reduced during specific hours.
    structured_adjustment: {"hours": [int, ...], "factor": number}
-   factor is the FRACTION OF SOLAR THAT REMAINS, not the amount removed.
-   Example: "solar drops by 80%" -> factor = 0.2. "solar drops to 20%" -> factor = 0.2.
+   factor is the FRACTION OF SOLAR THAT REMAINS (0.0 to 1.0), NOT the amount removed.
+   - "drops by 80%" or "80% reduction" or "reduced by 80%" -> factor = 0.2  (1 - 0.80 = 0.20)
+   - "drops to 20%" or "leaves 20%" or "1/5th remaining" -> factor = 0.2
+   - "drops by 30%" or "30% reduction" -> factor = 0.7  (1 - 0.30 = 0.70)
+
 
 2. minimum_battery_reserve
    Meaning: battery energy must stay at or above a level during specific hours.
