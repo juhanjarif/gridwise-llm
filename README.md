@@ -84,17 +84,12 @@ cp .env.example .env
 Then edit `.env` and fill in at least one API key. `.env` is gitignored —
 no secret values are ever committed to this repository.
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `LLM_PROVIDER` | Yes | Primary provider: `gemini` or `groq` |
+| Variable         | Required                | Purpose                                                    |
+| ---------------- | ----------------------- | ---------------------------------------------------------- |
+| `LLM_PROVIDER`   | Yes                     | Primary provider: `gemini` or `groq`                       |
 | `GEMINI_API_KEY` | At least one of the two | Gemini API key (used if primary, or as automatic fallback) |
-| `GROQ_API_KEY` | At least one of the two | Groq API key (used if primary, or as automatic fallback) |
-| `PORT` | No (default `8000`) | Port the service listens on |
-
-If the primary provider fails (timeout, error, rate limit), the other
-configured provider is tried automatically — no restart needed. Models
-used: Gemini's `gemini-3.6-flash` and Groq's `openai/gpt-oss-120b`
-(overridable via `GEMINI_MODEL` / `GROQ_MODEL`).
+| `GROQ_API_KEY`   | At least one of the two | Groq API key (used if primary, or as automatic fallback)   |
+| `PORT`           | No (default `8000`)     | Port the service listens on                                |
 
 ## Running the service
 
@@ -131,6 +126,14 @@ curl -X POST http://localhost:8000/optimize-energy \
   -d @data/example_request.json
 ```
 
+## Deployment
+
+Live public endpoint: `https://gridwise-llm-v1.onrender.com`
+
+```bash
+curl https://gridwise-llm-v1.onrender.com/health
+```
+
 ## Docker fallback image
 
 To use it locally:
@@ -161,12 +164,9 @@ docker run -d -p 8000:8000 \
 
 ## Dependencies
 
-See `requirements.txt`. Notably: `fastapi` + `uvicorn` (HTTP service),
-`pydantic` (schema validation and guardrail checks), `httpx` (LLM
-provider calls), `pulp` (LP optimizer, bundled CBC solver — no external
-binary required), `python-dotenv` (loads `.env`).
+See `requirements.txt`.
 
-## Known limitations
+## Known Limitations
 
 - The optimizer's LP has no round-trip battery efficiency loss, so
   charging and discharging in the same hour can be financially
