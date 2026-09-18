@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from app.schemas import (HealthResponse, OptimizeEnergyRequest, OptimizeEnergyResponse)
 from app.llm.interpreter import interpret_notes
-from app.guardrails.validator import validate_directives
+from app.guardrails.validator import validate_interpretations
 from app.optimizer import build_constraints, solve, replay_and_verify
 
 app = FastAPI(title="GridWise LLM Assistant")

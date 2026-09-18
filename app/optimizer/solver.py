@@ -51,7 +51,7 @@ def solve(hours: list[HourEntry], battery: BatteryConfig, constraints: Effective
 
     prob += batt[n - 1] == init_e
 
-    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
+    status = prob.solve(pulp.COIN_CMD(msg=False))
     if pulp.LpStatus[status] != "Optimal":
         raise RuntimeError(f"Optimizer did not find an optimal solution: {pulp.LpStatus[status]}")
 
