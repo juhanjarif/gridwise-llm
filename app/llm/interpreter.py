@@ -1,27 +1,16 @@
 from __future__ import annotations
-
 import json
 import re
-
 from app.llm.prompts import build_messages
 from app.llm.providers import AllProvidersFailedError, complete
-
 
 class InterpretationUnavailableError(Exception):
     """No provider could be reached. Caller must fail safe (e.g. all no_op)."""
 
-
 class MalformedLLMOutputError(Exception):
     """A provider responded, but the content wasn't parseable JSON."""
 
-
 def _extract_json_array(raw_text: str) -> list:
-    """Best-effort extraction of a JSON array from raw model text.
-
-    Models occasionally wrap output in markdown fences or add stray prose
-    even when told not to. Try a direct parse first, then fall back to
-    slicing out the first '[' ... last ']' span.
-    """
     raw_text = raw_text.strip()
     try:
         parsed = json.loads(raw_text)

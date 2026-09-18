@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from app.schemas import (HealthResponse, OptimizeEnergyRequest, OptimizeEnergyResponse)
-from app.llm.interpreter import interpret_notes
+from app.schemas import (HealthResponse, OptimizeEnergyRequest, OptimizeEnergyResponse, DirectiveInterpretation)
+from app.llm.interpreter import (interpret_notes, InterpretationUnavailableError, MalformedLLMOutputError)
 from app.guardrails.validator import validate_interpretations
 from app.optimizer import build_constraints, solve, replay_and_verify
 
@@ -11,22 +11,26 @@ def health():
     return HealthResponse(status="ok")
 
 @app.post("/optimize-energy", response_model=OptimizeEnergyResponse)
-def optimize_energy(req: OptimizeEnergyRequest):
+async def optimize_energy(req: OptimizeEnergyRequest):
     try:
-        raw_directives = interpret_notes(req.operator_notes)
-    except Exception:
-        raw_directives = [
-            {
-                "note_index": i,
-                "applies": False,
-                "directive_type": "no_op",
-                "structured_adjustment": None,
-                "explanation": "LLM unavailable; treated as no-op.",
-            }
+        raw_directives = await interpret_notes(
+            req.operator_notes,
+            req.battery.capacity_kwh,
+            timeout=20.0,
+        )
+    except (InterpretationUnavailableError, MalformedLLMOutputError) as exc:
+        directives = [
+            DirectiveInterpretation(
+                note_index=i,
+                applies=False,
+                directive_type="no_op",
+                structured_adjustment=None,
+                explanation=f"LLM unavailable: {exc}",
+            )
             for i in range(len(req.operator_notes))
         ]
-
-    directives = validate_directives(raw_directives, len(req.operator_notes))
+    else:
+        directives = validate_interpretations(raw_directives, len(req.operator_notes))
 
     constraints = build_constraints(req.hours, req.battery, directives)
 
