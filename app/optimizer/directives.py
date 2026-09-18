@@ -43,9 +43,17 @@ def build_constraints(hours: list[HourEntry], battery: BatteryConfig, directives
                 effective_solar[h] *= float(adj.factor)
 
         elif isinstance(adj, MinimumBatteryReserveAdjustment):
+            # Clamp to capacity: schemas.py only enforces >= 0 on this
+            # value, not <= capacity, so an LLM-provided reserve above the
+            # battery's actual capacity (e.g. a bad percentage conversion)
+            # would otherwise hand the solver an infeasible lowBound >
+            # upBound and crash it (see the PulpSolverError handling in
+            # main.py).
+            cap_val = float(battery.capacity_kwh)
             for h in adj.hours:
-                if adj.minimum_energy_kwh > min_battery[h]:
-                    min_battery[h] = float(adj.minimum_energy_kwh)
+                clamped = min(float(adj.minimum_energy_kwh), cap_val)
+                if clamped > min_battery[h]:
+                    min_battery[h] = clamped
 
         elif isinstance(adj, NoChargeWindowAdjustment):
             no_charge.update(adj.hours)

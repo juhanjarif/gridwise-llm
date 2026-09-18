@@ -49,3 +49,23 @@ def test_end_of_day_neutrality():
     constraints = build_constraints(hours, battery, [])
     plan = solve(hours, battery, constraints)
     assert abs(plan[-1].battery_energy_after_kwh - battery.initial_energy_kwh) < 0.01
+
+def test_minimum_battery_reserve_above_capacity_is_clamped_not_crashed():
+    # Regression: an LLM-provided reserve above the battery's actual
+    # capacity (e.g. a bad percentage conversion) used to hand the solver
+    # an infeasible lowBound > upBound and crash it with a PulpSolverError.
+    hours = _hours()
+    battery = _battery()
+    directive = DirectiveInterpretation(
+        note_index=0,
+        applies=True,
+        directive_type="minimum_battery_reserve",
+        structured_adjustment={"hours": [18, 19, 20], "minimum_energy_kwh": 9999},
+        explanation="reserve above capacity",
+    )
+    constraints = build_constraints(hours, battery, [directive])
+    assert constraints.min_battery_energy_kwh[18] == battery.capacity_kwh
+
+    plan = solve(hours, battery, constraints)
+    plan, _ = replay_and_verify(hours, battery, plan, constraints)
+    assert len(plan) == 24

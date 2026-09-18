@@ -1,3 +1,4 @@
+import pulp
 from fastapi import FastAPI, HTTPException
 from app.schemas import (HealthResponse, OptimizeEnergyRequest, OptimizeEnergyResponse, DirectiveInterpretation)
 from app.llm.interpreter import (interpret_notes, InterpretationUnavailableError, MalformedLLMOutputError)
@@ -36,7 +37,12 @@ async def optimize_energy(req: OptimizeEnergyRequest):
 
     try:
         plan = solve(req.hours, req.battery, constraints)
-    except RuntimeError as exc:
+    except (RuntimeError, pulp.PulpSolverError) as exc:
+        # PulpSolverError doesn't inherit from RuntimeError (it's a plain
+        # PulpError/Exception subclass), so an infeasible LP -- e.g. a
+        # minimum_battery_reserve directive above capacity -- would
+        # otherwise slip past this handler as an unhandled 500 with a raw
+        # stack trace instead of a controlled 422.
         raise HTTPException(status_code=422, detail=str(exc))
 
     try:

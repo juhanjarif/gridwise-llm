@@ -155,3 +155,40 @@ def test_no_op_with_applies_true_falls_back():
     result = validate_interpretations(raw, note_count=1)
     assert result[0].directive_type == "no_op"
     assert result[0].applies is False
+
+
+def test_float_note_index_is_coerced_and_accepted():
+    """Regression: isinstance(0.0, int) is False in Python, so a model
+    emitting note_index as a float (e.g. 0.0 instead of 0) used to get
+    silently dropped to no_op even though the directive was otherwise
+    perfectly valid."""
+    raw = [
+        {
+            "note_index": 0.0,
+            "applies": True,
+            "directive_type": "solar_reduction",
+            "structured_adjustment": {"hours": [13, 14], "factor": 0.2},
+            "explanation": "float note_index",
+        }
+    ]
+    result = validate_interpretations(raw, note_count=1)
+    assert result[0].directive_type == "solar_reduction"
+    assert result[0].structured_adjustment == {"hours": [13, 14], "factor": 0.2}
+
+
+def test_bool_note_index_is_rejected():
+    """Regression guard for the float-coercion fix: bool is an int
+    subclass in Python (isinstance(True, int) is True), so the coercion
+    must not accidentally let True/False slip through as note_index 1/0."""
+    raw = [
+        {
+            "note_index": True,
+            "applies": True,
+            "directive_type": "no_charge_window",
+            "structured_adjustment": {"hours": [1]},
+            "explanation": "bool note_index",
+        }
+    ]
+    result = validate_interpretations(raw, note_count=2)
+    assert result[0].directive_type == "no_op"
+    assert result[1].directive_type == "no_op"

@@ -26,7 +26,19 @@ def validate_interpretations(
             continue
 
         note_index = raw.get("note_index")
-        if not isinstance(note_index, int) or not (0 <= note_index < note_count):
+        # Some LLMs emit JSON integers as floats (e.g. 0.0 instead of 0);
+        # coerce integral floats before the int check so a valid directive
+        # doesn't get silently dropped to no_op over a formatting quirk.
+        # bool is excluded explicitly since bool is an int subclass in
+        # Python (isinstance(True, int) is True) and would otherwise slip
+        # through as note_index 0 or 1.
+        if isinstance(note_index, float) and note_index.is_integer():
+            note_index = int(note_index)
+        if (
+            not isinstance(note_index, int)
+            or isinstance(note_index, bool)
+            or not (0 <= note_index < note_count)
+        ):
             continue
         if note_index in by_index:
             continue
